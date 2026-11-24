@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="disabled-adaptations" content="watch">
+<title>Watch Test</title>
+<style>
+  html, body { margin: 0; background: #000; color: #fff;
+    font-family: -apple-system, system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+  body { padding: 14px 10px 40px; }
+  h1 { font-size: 17px; text-align: center; margin: 4px 0 8px; }
+  .t { background: #1c1c1e; border-radius: 14px; padding: 9px 10px; margin: 0 0 8px; }
+  .n { font-weight: 700; font-size: 15px; }
+  .r { font-size: 13px; color: #aaa; margin-top: 3px; word-break: break-word; }
+  .ok { color: #30d158; } .no { color: #ff453a; } .mb { color: #ffd60a; }
+  button { width: 100%; margin-top: 6px; padding: 9px 0; border: 0; border-radius: 10px;
+    background: #0a84ff; color: #fff; font-size: 14px; font-weight: 600; }
+  .row { display: flex; gap: 6px; } .row button { background: #333; }
+  #sum { text-align: center; font-size: 15px; font-weight: 700; margin: 10px 0; }
+  .pad { height: 260px; display: flex; align-items: center; justify-content: center; color: #555; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>Watch Test</h1>
+
+<div class="t"><div class="n">1. Crown</div>
+  <div class="r" id="crownR">Turn the Digital Crown slowly.</div></div>
+
+<div class="t"><div class="n">2. Motion</div>
+  <div class="r" id="motR">Tap, then tilt your wrist.</div>
+  <button id="motB">Test motion</button></div>
+
+<div class="t"><div class="n">3. Vibration</div>
+  <div class="r" id="vibR">Tap and feel for a buzz.</div>
+  <button id="vibB">Test vibration</button>
+  <div class="row" id="vibA" hidden><button data-k="V" data-v="1">Felt it</button><button data-k="V" data-v="0">Nothing</button></div></div>
+
+<div class="t"><div class="n">4. Sound</div>
+  <div class="r" id="sndR">Tap and listen for a beep.</div>
+  <button id="sndB">Test sound</button>
+  <div class="row" id="sndA" hidden><button data-k="S" data-v="1">Heard it</button><button data-k="S" data-v="0">Nothing</button></div></div>
+
+<div class="t"><div class="n">5. Location</div>
+  <div class="r" id="locR">Tap, allow if asked.</div>
+  <button id="locB">Test location</button></div>
+
+<div class="t"><div class="n">Extras</div>
+  <div class="r" id="ext"></div></div>
+
+<div id="sum"></div>
+<div class="r" style="text-align:center">Tell Claude the line above.</div>
+<div class="pad">(extra space so the crown can scroll)</div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const res = { C: '?', M: '?', V: '?', S: '?', L: '?' };
+  function set(k, v, el, msg) {
+    res[k] = v;
+    if (el) { el.innerHTML = msg; el.className = 'r ' + (v === '1' ? 'ok' : v === '0' ? 'no' : 'mb'); }
+    $('sum').textContent = 'C' + res.C + ' M' + res.M + ' V' + res.V + ' S' + res.S + ' L' + res.L;
+  }
+  set('C', '?');
+
+  // 1. Crown: count scroll and wheel events
+  let sc = 0, wh = 0, maxY = 0;
+  function crown() {
+    maxY = Math.max(maxY, window.scrollY || document.documentElement.scrollTop || 0);
+    set('C', (sc + wh) > 3 ? '1' : '?', $('crownR'),
+      'scroll events: ' + sc + ', wheel: ' + wh + ', moved ' + Math.round(maxY) + 'px' +
+      ((sc + wh) > 3 ? ' ✓ works' : ''));
+  }
+  addEventListener('scroll', () => { sc++; crown(); }, { passive: true });
+  addEventListener('wheel', () => { wh++; crown(); }, { passive: true });
+
+  // 2. Motion
+  $('motB').onclick = async () => {
+    const el = $('motR');
+    if (!('DeviceMotionEvent' in window) && !('DeviceOrientationEvent' in window)) {
+      return set('M', '0', el, 'Not supported (no motion API).');
+    }
+    try {
+      if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === 'function') {
+        const p = await DeviceMotionEvent.requestPermission();
+        if (p !== 'granted') return set('M', '0', el, 'Permission: ' + p);
+      }
+    } catch (e) { return set('M', '0', el, 'Permission error: ' + e.message); }
+    let got = 0, last = '';
+    function onM(e) {
+      got++;
+      const a = e.accelerationIncludingGravity;
+      if (a && a.x != null) last = 'x ' + a.x.toFixed(1) + ' y ' + a.y.toFixed(1) + ' z ' + a.z.toFixed(1);
+    }
+    function onO(e) {
+      got++;
+      if (e.beta != null) last = 'tilt ' + Math.round(e.beta) + '° / ' + Math.round(e.gamma) + '°';
+    }
+    addEventListener('devicemotion', onM); addEventListener('deviceorientation', onO);
+    set('M', '?', el, 'Listening… tilt your wrist');
+    setTimeout(() => {
+      if (got && last) set('M', '1', el, '✓ works: ' + got + ' readings, ' + last);
+      else if (got) set('M', '0', el, 'Events fire but values are empty (' + got + ')');
+      else set('M', '0', el, 'API exists but no readings in 4 s.');
+    }, 4000);
+  };
+
+  // 3. Vibration
+  $('vibB').onclick = () => {
+    const el = $('vibR');
+    if (!navigator.vibrate) { set('V', '0', el, 'Not supported (no vibrate API).'); return; }
+    let r; try { r = navigator.vibrate([200, 100, 200]); } catch (e) { r = 'error'; }
+    set('V', '?', el, 'Called, returned ' + r + '. Did you feel it?');
+    $('vibA').hidden = false;
+  };
+
+  // 4. Sound
+  $('sndB').onclick = () => {
+    const el = $('sndR'); let info = [];
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) {
+      try {
+        const ac = new AC(); ac.resume && ac.resume();
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.frequency.value = 880; g.gain.value = 0.3; o.connect(g); g.connect(ac.destination);
+        o.start(); o.stop(ac.currentTime + 0.4);
+        info.push('WebAudio ' + ac.state);
+      } catch (e) { info.push('WebAudio error'); }
+    } else info.push('no WebAudio');
+    try {
+      // short generated beep as a WAV for the <audio> element
+      const sr = 8000, n = 3200, b = new ArrayBuffer(44 + n), v = new DataView(b);
+      const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+      w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true);
+      v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr, true);
+      v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true);
+      for (let i = 0; i < n; i++) v.setUint8(44 + i, 128 + 60 * Math.sin(i / sr * 2 * Math.PI * 660));
+      const a = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' })));
+      setTimeout(() => a.play().then(() => {}, e => { info.push('audio tag blocked'); show(); }), 500);
+      info.push('audio tag tried');
+    } catch (e) { info.push('audio tag error'); }
+    function show() { set('S', '?', el, info.join(', ') + '. Hear 2 beeps?'); }
+    show(); $('sndA').hidden = false;
+  };
+
+  // answers for vibration / sound
+  document.querySelectorAll('[data-k]').forEach(btn => btn.onclick = () => {
+    const k = btn.dataset.k, v = btn.dataset.v, el = $(k === 'V' ? 'vibR' : 'sndR');
+    set(k, v, el, v === '1' ? '✓ works' : 'Not working');
+  });
+
+  // 5. Location (only shows whether it works, coordinates stay on the watch)
+  $('locB').onclick = () => {
+    const el = $('locR');
+    if (!navigator.geolocation) return set('L', '0', el, 'Not supported (no geolocation API).');
+    set('L', '?', el, 'Asking… (up to 15 s)');
+    navigator.geolocation.getCurrentPosition(
+      p => set('L', '1', el, '✓ works, accuracy ±' + Math.round(p.coords.accuracy) + ' m'),
+      e => set('L', '0', el, 'Failed: ' + (['', 'permission denied', 'unavailable', 'timed out'][e.code] || e.message)),
+      { timeout: 15000, maximumAge: 60000 });
+  };
+
+  // extras
+  let ls = 'no'; try { localStorage.setItem('probe', '1'); ls = localStorage.getItem('probe') === '1' ? 'yes' : 'no'; } catch (e) {}
+  $('ext').innerHTML = 'screen ' + innerWidth + '×' + innerHeight + ' @' + (window.devicePixelRatio || 1) + 'x<br>' +
+    'saving: ' + ls + ', online: ' + navigator.onLine + '<br>' +
+    'touch: ' + ('ontouchstart' in window) + ', ' + (navigator.language || '') + '<br>' +
+    (navigator.userAgent.match(/(Watch|iPhone|Macintosh|Windows)[^;)]*/) || [''])[0];
+})();
+</script>
+</body>
+</html>
