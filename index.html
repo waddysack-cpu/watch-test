@@ -162,7 +162,7 @@
 
   // extras
   let ls = 'no'; try { localStorage.setItem('probe', '1'); ls = localStorage.getItem('probe') === '1' ? 'yes' : 'no'; } catch (e) {}
-  $('ext').innerHTML = 'screen ' + innerWidth + '×' + innerHeight + ' @' + (window.devicePixelRatio || 1) + 'x<br>' +
+  $('ext').innerHTML = 'screen ' + innerWidth + '×' + innerHeight + ' @' + Math.round((window.devicePixelRatio || 1) * 100) / 100 + 'x<br>' +
     'saving: ' + ls + ', online: ' + navigator.onLine + '<br>' +
     'touch: ' + ('ontouchstart' in window) + ', ' + (navigator.language || '') + '<br>' +
     (navigator.userAgent.match(/(Watch|iPhone|Macintosh|Windows)[^;)]*/) || [''])[0];
